@@ -1,11 +1,20 @@
 import numpy as np
-import lsst.sims.skybrightness as sb
-import lsst.sims.utils as utils
+import rubin_sim.skybrightness as sb
+import rubin_sim.utils as utils
 import healpy as hp
 import sys
 import os
 import ephem
-from lsst.sims.skybrightness.utils import mjd2djd
+
+
+def mjd2djd(inDate):
+    """
+    Convert Modified Julian Date to Dublin Julian Date (what pyephem uses).
+    """
+    if not hasattr(mjd2djd, 'doff'):
+        mjd2djd.doff = ephem.Date(0)-ephem.Date('1858/11/17')
+    djd = inDate-mjd2djd.doff
+    return djd
 
 
 def generate_sky(mjd0=59560.2, mjd_max=59565.2, timestep=5., timestep_max=15.,
