@@ -1,4 +1,4 @@
-from generate_sky import generate_sky
+from .generate_sky import generate_sky
 
 
 if __name__ == "__main__":

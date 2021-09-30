@@ -27,10 +27,12 @@ if __name__ == "__main__":
     mjds = np.arange(59560, 59560+366*nyears+366/2., 366/2.)
 
     #result = dview.map_sync(lambda mjd1, mjd2:
-    #                        generate_sky.generate_sky(mjd0 = mjd1, mjd_max=mjd2+30, outpath='healpix_6mo', verbose=False),
+    #                        generate_sky.generate_sky(mjd0 = mjd1, mjd_max=mjd2+30, outpath='healpix_6mo',
+    #                        verbose=False),
     #                        mjds[:-1], mjds[1:])
 
     result = dview.map_sync(lambda mjd1, mjd2:
-                            generate_sky.generate_sky(mjd0 = mjd1, mjd_max=mjd2, outpath='opsimFields_20', fieldID=True, verbose=False),
+                            generate_sky.generate_sky(mjd0 = mjd1, mjd_max=mjd2, outpath='opsimFields_20',
+                                                      fieldID=True, verbose=False),
                             mjds[:-1], mjds[1:]+day_pad)
 

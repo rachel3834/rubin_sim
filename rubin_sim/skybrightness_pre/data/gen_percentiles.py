@@ -1,8 +1,9 @@
 from builtins import zip
 import numpy as np
-from lsst.sims.utils import m5_flat_sed
-from lsst.sims.photUtils import LSSTdefaults
+from rubin_sim.utils import m5_flat_sed
+from rubin_sim.photUtils import LSSTdefaults
 
+__all__ = ['restore_files', 'generate_percentiles']
 
 def restore_files():
     roots = ['61390_61603', '61573_61786', '61756_61969']

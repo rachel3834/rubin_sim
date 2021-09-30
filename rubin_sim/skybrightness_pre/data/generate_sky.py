@@ -1,67 +1,67 @@
-import numpy as np
-import lsst.sims.skybrightness as sb
-import lsst.sims.utils as utils
-import healpy as hp
 import sys
 import os
-import ephem
-from lsst.sims.skybrightness.utils import mjd2djd
+import argparse
+import numpy as np
+import healpy as hp
+import rubin_sim.skybrightness as sb
+import rubin_sim.utils as utils
+from astropy.time import Time
+from astropy.coordinates import get_sun, EarthLocation, AltAz
+import rubin_sim.version as version
+
+__all__ = ['generate_sky']
 
 
 def generate_sky(mjd0=59560.2, mjd_max=59565.2, timestep=5., timestep_max=15.,
                  outfile=None, outpath=None, nside=32,
                  sunLimit=-12., fieldID=False, airmass_overhead=1.5, dm=0.2,
-                 airmass_limit=2.5, moon_dist_limit=10., planet_dist_limit=2.,
-                 alt_limit=86.5, requireStride=3, verbose=True):
+                 airmass_limit=3.0, moon_dist_limit=10.,
+                 alt_limit=86.5, verbose=True):
     """
     Pre-compute the sky brighntess for a series of mjd dates at the LSST site.
 
     Parameters
     ----------
-    mjd0 : float (9560.2)
+    mjd0 : `float` (9560.2)
         The starting MJD time
-    duration : float
-        The length of time to generate sky maps for (years)
-    timestep : float (5.)
+    mjd_max : `float` (59565.2)
+        The ending MJD time
+    timestep : `float` (5.)
         The timestep between sky maps (minutes)
-    timestep_max : float (20.)
+    timestep_max : `float` (20.)
         The maximum alowable timestep (minutes)
-    outfile : str
+    outfile : `str`
         The name of the output file to save the results in
-    nside : in (32)
+    nside : `int` (32)
         The nside to run the healpixel map at
-    sunLimit : float (-12)
+    sunLimit : `float` (-12)
         The maximum altitude of the sun to try and generate maps for. MJDs with a higher
         sun altitude are dropped
-    fieldID : bool (False)
+    fieldID : `bool` (False)
         If True, computes sky magnitudes at OpSim field locations. If False
         computes at healpixel centers.
-    airmass_overhead : float
+    airmass_overhead : `float`
         The airmass region to demand sky models are well matched before dropping
         and assuming the timestep can be interpolated
-    dm : float
+    dm : `float`
         If a skymap can be interpolated from neighboring maps with precision dm,
         that mjd is dropped.
-    airmass_limit : float
+    airmass_limit : `float`
         Pixels with an airmass greater than airmass_limit are masked
-    moon_dist_limit : float
+    moon_dist_limit : `float`
         Pixels (fields) closer than moon_dist_limit (degrees) are masked
-    planet_dist_limit : float (2.)
-        Pixels (fields) closer than planet_dist_limit (degrees) to Venus, Mars, Jupiter, or Saturn are masked
-    alt_limit : float (86.5)
+    alt_limit : `float` (86.5)
         Altitude limit of the telescope (degrees). Altitudes higher than this are masked.
-    requireStride : int (3)
-        Require every nth mjd. Makes it possible to easily select an evenly spaced number states of a pixel.
 
     Returns
     -------
-    dict_of_lists : dict
+    dict_of_lists : `dict`
         includes key-value pairs:
         mjds : the MJD at every computation. Not evenly spaced as no computations.
         airmass : the airmass maps for each MJD
         masks : The `bool` mask map for each MJD (True means the pixel should be masked)
         sunAlts : The sun altitude at each MJD
-    sky_brightness : dict
+    sky_brightness : `dict`
         Has keys for each u,g,r,i,z,y filter. Each one is a 2-d array with dimensions of healpix ID and
         mjd (matched to the mjd list above).
     """
@@ -76,30 +76,21 @@ def generate_sky(mjd0=59560.2, mjd_max=59565.2, timestep=5., timestep_max=15.,
 
     # Look at the mjds and toss ones where the sun is up
     mjds = np.arange(mjd0, mjd_max+timestep, timestep)
-    sunAlts = np.zeros(mjds.size, dtype=float)
 
     if outfile is None:
         outfile = '%i_%i.npz' % (mjd0, mjd_max)
     if outpath is not None:
         outfile = os.path.join(outpath, outfile)
 
-    telescope = utils.Site('LSST')
-    Observatory = ephem.Observer()
-    Observatory.lat = telescope.latitude_rad
-    Observatory.lon = telescope.longitude_rad
-    Observatory.elevation = telescope.height
+    site = utils.Site('LSST')
+    location = EarthLocation(lat=site.latitude, lon=site.longitude, height=site.height)
+    times = Time(mjds, format='mjd')
+    sun = get_sun(times)
+    aa = AltAz(location=location, obstime=times)
+    sun = sun.transform_to(aa)
+    sunAlts = sun.alt.rad
 
-    sun = ephem.Sun()
-
-    # Planets we want to avoid
-    planets = [ephem.Venus(), ephem.Mars(), ephem.Jupiter(), ephem.Saturn()]
-
-    # Compute the sun altitude for all the possible MJDs
-    for i, mjd in enumerate(mjds):
-        Observatory.date = mjd2djd(mjd)
-        sun.compute(Observatory)
-        sunAlts[i] = sun.alt
-
+    
     mjds = mjds[np.where(sunAlts <= sunLimit_rad)]
     required_mjds = mjds[::3]
 
@@ -112,8 +103,6 @@ def generate_sky(mjd0=59560.2, mjd_max=59565.2, timestep=5., timestep_max=15.,
         hpindx = np.arange(hp.nside2npix(nside))
         ra, dec = utils.hpid2RaDec(nside, hpindx)
 
-    ra_rad = np.radians(ra)
-    dec_rad = np.radians(dec)
     if verbose:
         print('using %i points on the sky' % ra.size)
         print('using %i mjds' % mjds.size)
@@ -124,7 +113,7 @@ def generate_sky(mjd0=59560.2, mjd_max=59565.2, timestep=5., timestep_max=15.,
     filter_names = ['u', 'g', 'r', 'i', 'z', 'y']
 
     # Initialize the relevant lists
-    dict_of_lists = {'airmass': [], 'sunAlts': [], 'mjds': [], 'airmass_masks': [], 'planet_masks': [],
+    dict_of_lists = {'airmass': [], 'sunAlts': [], 'mjds': [], 'airmass_masks': [],
                      'moonAlts': [], 'moonRAs': [], 'moonDecs': [], 'sunRAs': [],
                      'sunDecs': [], 'moonSunSep': [], 'moon_masks': [], 'zenith_masks': []}
     sky_brightness = {}
@@ -160,7 +149,7 @@ def generate_sky(mjd0=59560.2, mjd_max=59565.2, timestep=5., timestep_max=15.,
                 del last_5_mjds[0]
                 del last_5_mags[0]
 
-            masks = {'moon': None, 'airmass': None, 'planet': None, 'zenith': None}
+            masks = {'moon': None, 'airmass': None, 'zenith': None}
             for mask in masks:
                 masks[mask] = np.zeros(np.size(ra), dtype=bool)
                 masks[mask].fill(False)
@@ -173,13 +162,6 @@ def generate_sky(mjd0=59560.2, mjd_max=59565.2, timestep=5., timestep_max=15.,
 
             # Apply altitude limit
             masks['zenith'][np.where(sm.alts >= alt_limit_rad)] = True
-
-            # Apply the planet distance limits
-            Observatory.date = mjd2djd(mjd)
-            for planet in planets:
-                planet.compute(Observatory)
-                distances = utils.haversine(ra_rad, dec_rad, planet.ra, planet.dec)
-                masks['planet'][np.where(distances <= np.radians(planet_dist_limit))] = True
 
             full_mask = np.zeros(np.size(ra), dtype=bool)
             full_mask.fill(False)
@@ -227,17 +209,14 @@ def generate_sky(mjd0=59560.2, mjd_max=59565.2, timestep=5., timestep_max=15.,
     for key in sky_brightness:
         sky_brightness[key] = np.array(sky_brightness[key])
 
-    import lsst.sims.skybrightness_pre
-    version = lsst.sims.skybrightness_pre.version.__version__
-    fingerprint = lsst.sims.skybrightness_pre.version.__fingerprint__
     # Generate a header to save all the kwarg info for how this run was computed
     header = {'mjd0': mjd0, 'mjd_max': mjd_max, 'timestep': timestep, 'timestep_max': timestep_max,
               'outfile': outfile, 'outpath': outpath, 'nside': nside, 'sunLimit': sunLimit,
               'fieldID': fieldID, 'airmas_overhead': airmass_overhead, 'dm': dm,
               'airmass_limit': airmass_limit, 'moon_dist_limit': moon_dist_limit,
-              'planet_dist_limit': planet_dist_limit, 'alt_limit': alt_limit,
+              'alt_limit': alt_limit,
               'ra': ra, 'dec': dec, 'verbose': verbose, 'required_mjds': required_mjds,
-              'version': version, 'fingerprint': fingerprint}
+              'version': version.__version__}
 
     np.savez(outfile, dict_of_lists = dict_of_lists, header=header)
     # Convert sky_brightness to a true array so it's easier to save
@@ -254,19 +233,21 @@ if __name__ == "__main__":
     #generate_sky(mjd0=59579, mjd_max=59579+10., outpath='healpix', outfile='small_example.npz_small')
     #generate_sky(mjd0=59579, mjd_max=59579+10., outpath='opsimFields', fieldID=True)
 
-    nyears = 15. #20  # 13
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--mjdStart", type=float, default=59488,
+                        help="Start time (MJD) for skybrightness files")
+    parser.add_argument("--mjdEnd", type=float, default=64327.0,
+                        help="End time (MJD) for skybrightness files")
+    parser.add_argument("--chunkSize", type=float, default=183,
+                        help="Length of time (days) for individual sky files")
+    args = parser.parse_args()
+
     day_pad = 30
-    # Full year
-    # mjds = np.arange(59560, 59560+365.25*nyears+day_pad+366, 366)
-    # 6-months
-    mjds = np.arange(59560, 59560+366*nyears+366/2., 366/2.)
-    # Add some time ahead of time for ComCam
-    #nyears = 3
-    #mjds = np.arange(58462, 58462+366*nyears+366/2., 366/2.)
+    mjds = np.arange(args.mjdStart, args.mjdEnd, args.chunkSize)
+    print(f'Creating skybrightness_pre files for {mjds}')
+    
     count = 0
     for mjd1, mjd2 in zip(mjds[:-1], mjds[1:]):
         print('Generating file %i' % count)
-        #generate_sky(mjd0=mjd1, mjd_max=mjd2+day_pad, outpath='opsimFields', fieldID=True)
         generate_sky(mjd0=mjd1, mjd_max=mjd2+day_pad, outpath='healpix')
         count += 1
-
