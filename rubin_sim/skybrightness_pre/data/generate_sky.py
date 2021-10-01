@@ -5,6 +5,7 @@ import healpy as hp
 import sys
 import os
 import ephem
+import subprocess
 
 
 def mjd2djd(inDate):
@@ -15,6 +16,10 @@ def mjd2djd(inDate):
         mjd2djd.doff = ephem.Date(0)-ephem.Date('1858/11/17')
     djd = inDate-mjd2djd.doff
     return djd
+
+
+def get_git_revision_hash() -> str:
+    return subprocess.check_output(['git', 'rev-parse', 'HEAD']).decode('ascii').strip()
 
 
 def generate_sky(mjd0=59560.2, mjd_max=59565.2, timestep=5., timestep_max=15.,
@@ -236,9 +241,8 @@ def generate_sky(mjd0=59560.2, mjd_max=59565.2, timestep=5., timestep_max=15.,
     for key in sky_brightness:
         sky_brightness[key] = np.array(sky_brightness[key])
 
-    import lsst.sims.skybrightness_pre
-    version = lsst.sims.skybrightness_pre.version.__version__
-    fingerprint = lsst.sims.skybrightness_pre.version.__fingerprint__
+    version = get_git_revision_hash()
+    fingerprint = get_git_revision_hash()
     # Generate a header to save all the kwarg info for how this run was computed
     header = {'mjd0': mjd0, 'mjd_max': mjd_max, 'timestep': timestep, 'timestep_max': timestep_max,
               'outfile': outfile, 'outpath': outpath, 'nside': nside, 'sunLimit': sunLimit,
