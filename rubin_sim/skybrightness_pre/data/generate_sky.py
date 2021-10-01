@@ -80,6 +80,9 @@ def generate_sky(mjd0=59560.2, mjd_max=59565.2, timestep=5., timestep_max=15.,
     if outfile is None:
         outfile = '%i_%i.npz' % (mjd0, mjd_max)
     if outpath is not None:
+        # create the output directory if it doesn't exist
+        if not os.path.isdir(outpath):
+            os.mkdir(outpath)
         outfile = os.path.join(outpath, outfile)
 
     site = utils.Site('LSST')
