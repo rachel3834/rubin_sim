@@ -482,7 +482,7 @@ class BaseObs(object):
             writestring = '%s ' % (objId)
             writestring += '%s ' % str(eph)[1:-1]  # clip off starting and ending parentheses
             writestring += '%s ' % str(simdat)[1:-1]
-            writestring += '%s %s %s' % (dmd, dmt, dmd)
+            writestring += '%s %s %s' % (dmc, dmt, dmd)
             self.outfile.write('%s\n' % (writestring))
 
     def _closeOutput(self):
