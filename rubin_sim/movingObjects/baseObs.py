@@ -476,9 +476,11 @@ class BaseObs(object):
 
         # Write results. XXX--Should be a clean way to stack these things and use something
         # like np.array2string or np.savetxt to avoid looping over every row.
+        # XXX--seems like we have a hodgepodge of arrays, structured arrays, and record arrays. 
+        # Might be worth refactoring to eliminate the rec arrays, I don't think they have more functionality.
         for eph, simdat, dmc, dmt, dmd in zip(objEphs, obsData, dmagColor, dmagTrail, dmagDetect):
             writestring = '%s ' % (objId)
-            writestring += '%s ' % str(eph)[1:-1]
+            writestring += '%s ' % str(eph)[1:-1]  # clip off starting and ending parentheses
             writestring += '%s ' % str(simdat)[1:-1]
             writestring += '%s %s %s' % (dmd, dmt, dmd)
             self.outfile.write('%s\n' % (writestring))
