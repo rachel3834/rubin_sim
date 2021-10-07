@@ -462,14 +462,10 @@ class BaseObs(object):
         dmagTrail, dmagDetect = self.calcTrailingLosses(objEphs['velocity'],
                                                         obsData[self.seeingCol],
                                                         obsData[self.visitExpTimeCol])
-        # Turn into a recarray so it's easier below.
-        dmags = np.rec.fromarrays([dmagColor, dmagTrail, dmagDetect],
-                                  names=['dmagColor', 'dmagTrail', 'dmagDetect'])
 
         obsDataNames = list(obsData.dtype.names)
-        obsDataNames.sort()
 
-        outCols = ['objId', ] + list(objEphs.dtype.names) + obsDataNames + list(dmags.dtype.names)
+        outCols = ['objId', ] + list(objEphs.dtype.names) + obsDataNames + ['dmagColor', 'dmagTrail', 'dmagDetect']
 
         if not self.wroteHeader:
             writestring = ''
@@ -478,17 +474,14 @@ class BaseObs(object):
             self.outfile.write('%s\n' % (writestring))
             self.wroteHeader = True
 
-        # Write results.
-        for eph, simdat, dm in zip(objEphs, obsData, dmags):
+        # Write results. XXX--Should be a clean way to stack these things and use something
+        # like np.array2string or np.savetxt to avoid looping over every row.
+        for eph, simdat, dmc, dmt, dmd in zip(objEphs, obsData, dmagColor, dmagTrail, dmagDetect):
             writestring = '%s ' % (objId)
-            for col in eph.dtype.names:
-                writestring += '%s ' % (eph[col])
-            for col in obsDataNames:
-                writestring += '%s ' % (simdat[col])
-            for col in dm.dtype.names:
-                writestring += '%s ' % (dm[col])
+            writestring += '%s ' % str(eph)[1:-1]
+            writestring += '%s ' % str(simdat)[1:-1]
+            writestring += '%s %s %s' % (dmd, dmt, dmd)
             self.outfile.write('%s\n' % (writestring))
-        self.outfile.flush()
 
     def _closeOutput(self):
         self.outfile.write('# Finished at %s' % (datetime.datetime.now()))
