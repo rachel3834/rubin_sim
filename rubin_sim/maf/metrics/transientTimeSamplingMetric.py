@@ -115,7 +115,9 @@ class calcSeasonVisibilityGapsMetric(maf.BaseMetric):
         seasons = maf.seasonMetrics.calcSeason(
             dataSlice[self.ra_col], dataSlice[self.mjdCol]
         )
+        seasons.sort()
         firstOfSeason, lastOfSeason = maf.seasonMetrics.findSeasonEdges(seasons)
+
         ngaps = len(firstOfSeason) - 1
         season_gaps = (
             dataSlice[self.mjdCol][lastOfSeason[0 : ngaps - 1]]
