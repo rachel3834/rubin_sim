@@ -140,33 +140,38 @@ class galPlaneTimePerFilter(maf.BaseMetric):
 
     def calculate_overlap_survey_region(self,region_pixels, dataSlice, match):
 
-        # Calculate which HEALpixels observations in the dataSlice correspond to
-        coords_icrs = SkyCoord(
-            dataSlice[self.ra_col][match],
-            dataSlice[self.dec_col][match],
-            frame="icrs",
-            unit=(u.deg, u.deg),
-        )
-        coords_gal = coords_icrs.transform_to(Galactic())
-        ahp = HEALPix(nside=self.NSIDE, order="ring", frame=TETE())
-        pixels = ahp.skycoord_to_healpix(coords_gal)
+        if len(match) > 0:
+            # Calculate which HEALpixels observations in the dataSlice correspond to
+            coords_icrs = SkyCoord(
+                dataSlice[self.ra_col][match],
+                dataSlice[self.dec_col][match],
+                frame="icrs",
+                unit=(u.deg, u.deg),
+            )
+            coords_gal = coords_icrs.transform_to(Galactic())
+            ahp = HEALPix(nside=self.NSIDE, order="ring", frame=TETE())
+            pixels = ahp.skycoord_to_healpix(coords_gal)
 
-        # Calculate the overlap between the observed HEALpixels and
-        # those from the desired survey region
-        overlap_pixels = list(set(pixels.tolist()).intersection(set(region_pixels.tolist())))
+            # Calculate the overlap between the observed HEALpixels and
+            # those from the desired survey region
+            overlap_pixels = list(set(pixels.tolist()).intersection(set(region_pixels.tolist())))
 
-        # Identify which observations from the dataSlice correspond to
-        # the overlapping survey region.  This may produce multiple
-        # indices in the array, referred to different observations
-        match = np.array(match)
-        match_obs = []
-        for p in overlap_pixels:
-            ip = np.where(pixels == p)[0]
-            match_obs += match[ip].tolist()
+            # Identify which observations from the dataSlice correspond to
+            # the overlapping survey region.  This may produce multiple
+            # indices in the array, referred to different observations
+            match = np.array(match)
+            match_obs = []
+            for p in overlap_pixels:
+                ip = np.where(pixels == p)[0]
+                match_obs += match[ip].tolist()
+
+        else:
+            overlap_pixels = []
+            match_obs = []
 
         return overlap_pixels, match_obs
 
-    def run(self, dataSlice, slicePoint=None):
+    def run(self, dataSlice, slicePoint=None, verbose=False):
 
         # Pre-calculating data that will be used later
         total_expt_per_pixel = dataSlice[self.exptCol].sum()
@@ -177,6 +182,8 @@ class galPlaneTimePerFilter(maf.BaseMetric):
         # metric values if the survey strategy returned ideal results for
         # each given science case; these data are used for normalization
         metric_data = {}
+        for f in self.filters:
+            metric_data[f] = {}
 
         for i, f in enumerate(self.filters):
             # Fetch the map data for this filter
@@ -188,17 +195,6 @@ class galPlaneTimePerFilter(maf.BaseMetric):
             idx1 = np.where(dataSlice[self.filterCol] == f)[0]
             idx2 = np.where(dataSlice[self.m5Col] >= self.magCuts[f])[0]
             match = list(set(idx1).intersection(set(idx2)))
-
-            # Calculate which HEALpixels these observations correspond to
-            coords_icrs = SkyCoord(
-                dataSlice[self.ra_col][match],
-                dataSlice[self.dec_col][match],
-                frame="icrs",
-                unit=(u.deg, u.deg),
-            )
-            coords_gal = coords_icrs.transform_to(Galactic())
-            ahp = HEALPix(nside=self.NSIDE, order="ring", frame=TETE())
-            pixels = ahp.skycoord_to_healpix(coords_gal)
 
             for col in map_data_table.columns:
 
@@ -215,27 +211,33 @@ class galPlaneTimePerFilter(maf.BaseMetric):
                 # summed over all HEALpixels in the desired region, if the
                 # survey strategy exactly matched the needs of the current science case
                 idealfExpT = self.calc_idealfExpT(f, overlap_pixels, col)
-                print('ideal f/ExpT = ',idealfExpT)
+                if verbose:
+                    print('ideal f/ExpT = ',idealfExpT)
 
                 # Now calculate the actual fraction of exposure time spend
                 # in this filter summed over all HEALpix from the overlap region.
                 # If no exposures are expected in this filter, this returns 1
                 # on the principle that 100% of the expected observations are
                 # provided, and additional data in other filters is usually welcome
-                print('Exposure time for matching exposures = ',dataSlice[self.exptCol][match_obs].sum())
-                print('Total exposure time per pixel = ',total_expt_per_pixel)
+                if verbose:
+                    print('Exposure time for matching exposures = ',dataSlice[self.exptCol][match_obs].sum())
+                    print('Total exposure time per pixel = ',total_expt_per_pixel)
                 fexpt = dataSlice[self.exptCol][match_obs].sum() / total_expt_per_pixel
-                print('Exp fraction = ',fexpt)
+                if verbose:
+                    print('Exp fraction = ',fexpt)
                 if idealfExpT > 0:
                     metric = fexpt / idealfExpT
                 else:
                     metric = 1.0
-                print('Exp fraction relative to ideal fraction = ',metric,f,col.name)
+                if verbose:
+                    print('Exp fraction relative to ideal fraction = ',metric,f,col.name)
 
                 # Accumulate the product of this metric over all filters for each science region
-                if col.name not in metric_data.keys():
-                    metric_data[col.name] = metric
+                metric_data_filter = metric_data[f]
+                if col.name not in metric_data_filter.keys():
+                    metric_data_filter[col.name] = metric
                 else:
-                    metric_data[col.name] *= metric
+                    metric_data_filter[col.name] *= metric
+                metric_data[f] = metric_data_filter
 
         return metric_data
