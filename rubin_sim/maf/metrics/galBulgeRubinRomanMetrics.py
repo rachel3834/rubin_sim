@@ -33,6 +33,11 @@ class MicrolensingEvent():
         self.startMJD = self.t0 - self.tE
         self.endMJD = self.t0 + self.tE
 
+    def summary(self):
+        return 't0 = '+str(self.t0)+', tE = '+str(self.tE)+\
+                ', rho = '+str(self.rho)+', Roman season = '+str(self.romanSeason)+\
+                ', tstart = '+str(self.startMJD)+', tend = '+str(self.endMJD)
+
 class RGESSurvey():
     """Parameters describing the Roman Galactic Exoplanet Survey, as described
     in Johnson et al., 2021, AJ, 160, id.123
@@ -49,7 +54,7 @@ class RGESSurvey():
     def __init__(self):
         self.nside = 64
         self.location = {'l_center': 2.216, 'b_center': -3.14,
-                            'l_width': 1.75, 'b_height': 1.75}
+                            'l_halfwidth': 1.75, 'b_halfheight': 1.75}
         self.seasonLength = 72.0    # days
         self.nSeasons = 6
         self.cadence = 15.0 / (60.0 * 24.0)         # days
@@ -82,7 +87,7 @@ class RGESSurvey():
         self.skycoord = self.skycoord.transform_to('icrs')
         phi = np.deg2rad(self.skycoord.ra.deg)
         theta = (np.pi/2.0) - np.deg2rad(self.skycoord.dec.deg)
-        radius = np.deg2rad(self.location['l_width']/2.0)
+        radius = np.deg2rad(self.location['l_halfwidth'])
         xyz = hp.ang2vec(theta, phi)
         self.pixels = hp.query_disc(self.nside, xyz, radius)
 
@@ -98,11 +103,14 @@ class RGESSurvey():
                                                         season['end'],
                                                         self.cadence)) )
 
-    def check_point_within_footprint(self,pixel):
-        if pixel in self.pixels:
-            return True
-        else:
-            return False
+    def check_point_within_footprint(self,pixels):
+        if type(pixels) != type([]):
+            pixels = [pixels]
+        status = False
+        for pix in pixels:
+            if pix in self.pixels and status == False:
+                status = True
+        return status
 
 def simLensingEvents(nSimEvents,obsSeasons,nSeasons):
     """Based on code by Etienne Bachelet, adapted by Rachel Street"""
@@ -207,12 +215,21 @@ class lensDetectRubinRomanMetric(maf.BaseMetric):
         seasonEnd = self.RGES.seasons[event.romanSeason]['end']
 
         obsWindowStart = max( event.startMJD, seasonStart )
-        obsWindowEnd = min( event.startMJD, seasonEnd )
+        obsWindowEnd = min( event.endMJD, seasonEnd )
 
         if obsWindowEnd > obsWindowStart:
             event.romanTimestamps = np.arange(obsWindowStart,
                                                 obsWindowEnd,
                                                 self.RGES.cadence)
+        else:
+            event.romanTimestamps = np.array([])
+
+    def getHealpixels(self,ra,dec):
+        """Assumes that RA, Dec from the slicePoint are in decimal radians"""
+        phi = ra
+        theta = (np.pi/2.0) - dec
+        pixels = hp.ang2pix(self.NSIDE,theta,phi,nest=False)
+        return pixels
 
     def run(self, dataSlice, slicePoint=None):
 
@@ -238,7 +255,8 @@ class lensDetectRubinRomanMetric(maf.BaseMetric):
             match_obs += match
 
         # Check whether the current slicePoint HEALpixels is in the RGES footprint
-        within_footprint = self.RGES.check_point_within_footprint(slicePoint['sid'])
+        slicePixels = self.getHealpixels(slicePoint['ra'],slicePoint['dec'])
+        within_footprint = self.RGES.check_point_within_footprint(slicePixels)
 
         # Metric is the percentage of events jointly detected by both surveys
         if within_footprint:
@@ -324,6 +342,8 @@ class complementaryObsMetric(maf.BaseMetric):
         self.RGES = RGESSurvey()
 
     def countContemporaneousObs(self,rubinTimestamps,romanTimestamps):
+        """Calculates the number of Rubin observations that are acquired
+        within 24hrs of an observation from Roman"""
 
         rubinTimestamps = np.sort(rubinTimestamps)
         romanTimestamps = np.sort(romanTimestamps)
@@ -334,7 +354,7 @@ class complementaryObsMetric(maf.BaseMetric):
         idx = np.where(delta_times < 1.0)
         obs = np.unique(np.concatenate( (tt1[idx], tt2[idx]) ))
 
-        return len(idx[0])
+        return len(obs)
 
     def countGapObs(self,rubinTimestamps,romanSeasons):
 
